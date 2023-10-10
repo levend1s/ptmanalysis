@@ -70,6 +70,10 @@ splitAttributes <- function(df) {
 gff <- read.delim(pfal_gff_path, header=FALSE, comment.char="#")
 colnames(gff) <- c("contig", "source", "type", "start", "end", "score", "strand", "phase", "attributes")
 gff <- splitAttributes(gff)
+gff <- transform(gff, genomic_position=chromosomes[match(contig, chromosomes$contig), ]$genomic_start)
+gff$genomic_start_position <- gff$genomic_position + gff$start - 1
+gff$length <- gff$end - gff$start
+gff$genomic_end_position <- gff$genomic_start_position + gff$length
 
 # --------------------- ADD GENOMIC POSITION --------------------- 
 
@@ -78,29 +82,45 @@ addGenomicPosition <- function(d, type) {
   d$genomic_position <- NA
   
   if (type == "m6anet") {
+    m6anet_probabilty_modified_threshold <- 0.8
+    d <- d[d$probability_modified > m6anet_probabilty_modified_threshold,]
+    
     d$transcript_start_position <- NA
+    d$transcript_end_position <- NA
     d$contig <- NA
+    d$strand <- NA
     d <- transform(d, transcript_start_position=gff[match(transcript_id, gff$ID), ]$start)
+    d <- transform(d, transcript_end_position=gff[match(transcript_id, gff$ID), ]$end)
+    d <- transform(d, contig=gff[match(transcript_id, gff$ID), ]$contig)
+    d <- transform(d, strand=gff[match(transcript_id, gff$ID), ]$strand)
+    d <- transform(d, genomic_position=chromosomes[match(contig, chromosomes$contig), ]$genomic_start)
+  
     # NOTE column transcript_position is the start position of the DRACH motiff. it is indexed +1, so transcript_position=37398 maps to contig position=37397
     # with this taken into account, the position of the A in the DRACH motif is only +1 above the column transcript_position
-    d$position <- d$transcript_position+d$transcript_start_position+1
-    d <- transform(d, contig=gff[match(transcript_id, gff$ID), ]$contig)
-    d <- transform(d, genomic_position=chromosomes[match(contig, chromosomes$contig), ]$genomic_start)
+    d$contig_position <- NA
+    d[d$strand == "+",]$contig_position <- d[d$strand == "+",]$transcript_start_position+d[d$strand == "+",]$transcript_position
+    d[d$strand == "-",]$contig_position <- d[d$strand == "-",]$transcript_end_position-d[d$strand == "-",]$transcript_position
+    d$pos <- d$contig_position
   }
   else if(type == "plasmodb") {
     d <- transform(d, genomic_position=chromosomes[match(Genomic.Sequence.ID, chromosomes$contig), ]$genomic_start)
   }
   else if(type == "epinanosvm") {
+    d$gene_id <- NA
     d[c("start", "end")] <- str_split_fixed(d$Window, "-", 2)
     d$start <- as.numeric(d$start)
     d$end <- as.numeric(d$end)
     # always PLUS 2 from start, epinano doesnt show windows in reverse for - strand like plasmodb
-    d$position <- d$start+2
+    d$pos <- d$start+2
     
+    d <- d[d$prediction == "mod",]
     d <- transform(d, genomic_position=chromosomes[match(Ref, chromosomes$contig), ]$genomic_start)
   }
   else if(type == "epinano") {
+    d <- d[d$prediction == "mod",]
     d <- transform(d, genomic_position=chromosomes[match(contig, chromosomes$contig), ]$genomic_start)
+    # map contig position to gene
+    
   }
 
   # add contig position to genomic position and subtract 1. This handles the case where genomic start = 1 and pos = 1 -> 1+1 - 1.
@@ -161,35 +181,60 @@ rrach_genome_site_coverage <- calculateCoverage(plasmodb_rrachs, 1, genome_size)
 
 # ---------------------- M6ANET ----------------------
 generateM6AnetCoverage <- function(m6anet_data, start, end) {
-  m6anet_probabilty_modified_threshold <- 0.8
-  m6anet_data_filtered <- m6anet_data[m6anet_data$probability_modified > m6anet_probabilty_modified_threshold,]
-  m6anet_genome_site_coverage <- calculateCoverage(m6anet_data_filtered, start, end)
+  m6anet_genome_site_coverage <- calculateCoverage(m6anet_data, start, end)
   
   return(m6anet_genome_site_coverage)
 }
 
+c1_m6anet_path <- "/Users/joshualevendis/Desktop/Biomedical\ Research\ Project/m6anet/inference_transcriptome/C1/data.site_proba.csv"
 c2_m6anet_path <- "/Users/joshualevendis/Desktop/Biomedical\ Research\ Project/m6anet/inference_transcriptome/C2/data.site_proba.csv"
+ks1_m6anet_path <- "/Users/joshualevendis/Desktop/Biomedical\ Research\ Project/m6anet/inference_transcriptome/KS1/data.site_proba.csv"
 ks2_m6anet_path <- "/Users/joshualevendis/Desktop/Biomedical\ Research\ Project/m6anet/inference_transcriptome/KS2/data.site_proba.csv"
+
+c1_m6anet_data <- read.csv(c1_m6anet_path, header=TRUE, stringsAsFactors = TRUE)
 c2_m6anet_data <- read.csv(c2_m6anet_path, header=TRUE, stringsAsFactors = TRUE)
+ks1_m6anet_data <- read.csv(ks1_m6anet_path, header=TRUE, stringsAsFactors = TRUE)
 ks2_m6anet_data <- read.csv(ks2_m6anet_path, header=TRUE, stringsAsFactors = TRUE)
 
+c1_m6anet_data <- addGenomicPosition(c1_m6anet_data, "m6anet")
 c2_m6anet_data <- addGenomicPosition(c2_m6anet_data, "m6anet")
+ks1_m6anet_data <- addGenomicPosition(ks1_m6anet_data, "m6anet")
 ks2_m6anet_data <- addGenomicPosition(ks2_m6anet_data, "m6anet")
 
+c1_m6anet_coverage <- generateM6AnetCoverage(c1_m6anet_data, 1, genome_size)
 c2_m6anet_coverage <- generateM6AnetCoverage(c2_m6anet_data, 1, genome_size)
+ks1_m6anet_coverage <- generateM6AnetCoverage(ks1_m6anet_data, 1, genome_size)
 ks2_m6anet_coverage <- generateM6AnetCoverage(ks2_m6anet_data, 1, genome_size)
 
-control_m6anet_coverage <- c2_m6anet_coverage
-#control_m6anet_coverage$c2_num_sites <- c2_m6anet_coverage$num_sites
-#control_m6anet_coverage$average_num_sites <- rowMeans(control_m6anet_coverage[,c('num_sites', 'c2_num_sites')], na.rm=TRUE)
+control_m6anet_coverage <- c1_m6anet_coverage
+control_m6anet_coverage$c2_num_sites <- c2_m6anet_coverage$num_sites
+control_m6anet_coverage$average_num_sites <- rowMeans(control_m6anet_coverage[,c('num_sites', 'c2_num_sites')], na.rm=TRUE)
 
-ks_m6anet_coverage <- ks2_m6anet_coverage
-#ks_m6anet_coverage$ks2_num_sites <- ks2_m6anet_coverage$num_sites
-#ks_m6anet_coverage$average_num_sites <- rowMeans(ks_m6anet_coverage[,c('num_sites', 'ks2_num_sites')], na.rm=TRUE)
+ks_m6anet_coverage <- ks1_m6anet_coverage
+ks_m6anet_coverage$ks2_num_sites <- ks1_m6anet_coverage$num_sites
+ks_m6anet_coverage$average_num_sites <- rowMeans(ks_m6anet_coverage[,c('num_sites', 'ks2_num_sites')], na.rm=TRUE)
 
 # ---------------------- EPINANO ----------------------
+# add gene ids to epinano output, only gene ids, not exons etc
+just_genes <- gff[is.na(gff$parent),]  
+find_gene_id <- function(r) {
+  # get all pfal genes that the m6a site is in
+  matches <- NA
+  matches <- just_genes[
+    just_genes$genomic_start_position < as.numeric(getElement(r, "genomic_position"))
+    & just_genes$genomic_end_position > as.numeric(getElement(r, "genomic_position"))
+    & just_genes$strand == getElement(r, "Strand"),]
+  
+  if (nrow(matches) == 0) {
+    return(NA)
+  } 
+  else {
+    # handles the case where a m6a site is in multiple genes
+    return(paste(matches[is.na(matches$parent),]$gene_id, collapse = ','))
+  }
+}
+
 generateEpinanoCoverage <- function(epinano_data, start, end) {
-  epinano_data <- epinano_data[epinano_data$prediction == "mod",]
   epinano_genome_site_coverage <- calculateCoverage(epinano_data, start, end)
   
   return(epinano_genome_site_coverage)
@@ -210,6 +255,12 @@ c2_epinano_data <- addGenomicPosition(c2_epinano_data, "epinanosvm")
 ks1_epinano_data <- addGenomicPosition(ks1_epinano_data, "epinanosvm")
 ks2_epinano_data <- addGenomicPosition(ks2_epinano_data, "epinanosvm")
 
+c2_epinano_data$gene_id <- apply(c2_epinano_data, 1, find_gene_id)
+c2_epinano_data$gene_id <- apply(c2_epinano_data, 1, find_gene_id)
+ks1_epinano_data$gene_id <- apply(ks1_epinano_data, 1, find_gene_id)
+ks2_epinano_data$gene_id <- apply(ks2_epinano_data, 1, find_gene_id)
+
+# all m6a sites including ones that couldn't map to genes
 c1_epinano_coverage <- generateEpinanoCoverage(c1_epinano_data, 1, genome_size)
 c2_epinano_coverage <- generateEpinanoCoverage(c2_epinano_data, 1, genome_size)
 ks1_epinano_coverage <- generateEpinanoCoverage(ks1_epinano_data, 1, genome_size)
@@ -246,14 +297,27 @@ for(i in 1:nrow(chromosomes)) {
 
 plot(
   type = "l",
-  control_epinano_coverage$percent_through_genome,
-  scalar(control_epinano_coverage$average_num_sites),
+  control_m6anet_coverage$percent_through_genome,
+  control_m6anet_coverage$average_num_sites,
   xlab="% through genome",
-  ylab="number predicted sites in control across tools",
-  ylim=c(0,1),
+  ylab="m6anet - average number predicted sites",
   col="blue"
 )
-lines(control_m6anet_coverage$percent_through_genome, scalar(control_m6anet_coverage$num_sites), col="red")
+lines(ks_m6anet_coverage$percent_through_genome, ks_m6anet_coverage$average_num_sites, col="red")
+
+for(i in 1:nrow(chromosomes)) {
+  abline(v=chromosomes[i,]$genomic_start_percentage, col="gray", lty=2)
+}
+
+plot(
+  type = "l",
+  control_epinano_coverage$percent_through_genome,
+  control_epinano_coverage$average_num_sites,
+  xlab="% through genome",
+  ylab="epinano - average number predicted sites",
+  col="blue"
+)
+lines(ks_epinano_coverage$percent_through_genome, ks_epinano_coverage$average_num_sites, col="red")
 
 for(i in 1:nrow(chromosomes)) {
   abline(v=chromosomes[i,]$genomic_start_percentage, col="gray", lty=2)
@@ -262,19 +326,37 @@ for(i in 1:nrow(chromosomes)) {
 # do it just for chomosome x
 chromosome_x <- 14
 chr1_c2_m6anet_coverage <- generateM6AnetCoverage(c2_m6anet_data, chromosomes[chromosome_x,]$genomic_start, chromosomes[chromosome_x,]$genomic_start + chromosomes[chromosome_x,]$end)
-#ks1_m6anet_coverage <- generateM6AnetCoverage("/Users/joshualevendis/Desktop/Biomedical\ Research\ Project/m6anet/ks_1_m6anet_output_inference/ks1_data.site_proba.csv")
 chr1_ks2_m6anet_coverage <- generateM6AnetCoverage(ks2_m6anet_data, chromosomes[chromosome_x,]$genomic_start, chromosomes[chromosome_x,]$genomic_start + chromosomes[chromosome_x,]$end)
 
-# GRAPH
-plot(
-  type = "l",
-  chr1_c2_m6anet_coverage$percent_through_genome,
-  chr1_c2_m6anet_coverage$num_sites,
-  xlab="% through genome",
-  ylab="number of DRACH sites",
-  col="blue"
-)
-lines(chr1_ks2_m6anet_coverage$percent_through_genome, chr1_ks2_m6anet_coverage$num_sites, col="red")
+# get the most modified genes and their numbers
+epinano_highlymodified <- sort(table(c2_epinano_data$gene_id), decreasing = TRUE)
+
+m6anet_highlymodified <- sort(table(c2_m6anet_data$transcript_id), decreasing = TRUE)
+m6anet_highlymodified <- as.data.frame(m6anet_highlymodified)
+colnames(m6anet_highlymodified) <- c("gene_id", "m6anet_count")
+m6anet_highlymodified$gene_id <- str_split_fixed(m6anet_highlymodified$gene_id, "\\.", 2)[,1]
+
+epinano_highlymodified <- as.data.frame(epinano_highlymodified)
+colnames(epinano_highlymodified) <- c("gene_id", "epinano_count")
+
+genes_highlymodified <- merge(m6anet_highlymodified, epinano_highlymodified, by="gene_id")
+
+genes_highlymodified$average_count_across_tools <- rowMeans(genes_highlymodified[] [,-1])
+
+# Pearsons R coeff between treatments on the same tool, based on genome coverage
+cor(c1_epinano_coverage$num_sites, c2_epinano_coverage$num_sites)
+cor(c2_m6anet_coverage$num_sites, ks2_m6anet_coverage$num_sites)
+cor(c2_epinano_coverage$num_sites, c2_m6anet_coverage$num_sites)
+
+# Pearsons R coeff between tools on number of sites detected in each gene
+cor(genes_highlymodified$m6anet_count, genes_highlymodified$epinano_count)
+
+cor(rrach_genome_site_coverage$num_sites, drach_genome_site_coverage$num_sites)
+
+m6a_genes_modified <- "/Users/joshualevendis/Desktop/Biomedical\ Research\ Project/m6a_genes_modified.csv"
+write.csv(genes_highlymodified, m6a_genes_modified, row.names = FALSE)
+
+stop()
 
 # STATISTICAL TESTS
 # plotting c1 against c2 num predicted sites should give a linear relationship. We can use a chow

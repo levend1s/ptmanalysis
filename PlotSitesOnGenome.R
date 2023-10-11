@@ -117,10 +117,31 @@ addGenomicPosition <- function(d, type) {
     d <- transform(d, genomic_position=chromosomes[match(Ref, chromosomes$contig), ]$genomic_start)
   }
   else if(type == "epinano") {
-    d <- d[d$prediction == "mod",]
+    colnames(d) <- c("chr_pos", "ko_feature", "wt_feature", "delta_sum_err", "z_scores", "z_score_prediction")
+    d[c("contig", "pos", "base", "Strand")] <- str_split_fixed(d$chr_pos, " ", 4)
+    d$pos <- as.numeric(d$pos)
+    
     d <- transform(d, genomic_position=chromosomes[match(contig, chromosomes$contig), ]$genomic_start)
     # map contig position to gene
     
+  }
+  else if (type == "xpore") {
+    colnames(d) <- c("id","position","kmer","diff_mod_rate_KO_vs_WT","pval_KO_vs_WT","z_score_KO_vs_WT","mod_rate_KO-rep1","mod_rate_KO-rep2","mod_rate_WT-rep1","mod_rate_WT-rep2","coverage_KO-rep1","coverage_KO-rep2","coverage_WT-rep1","coverage_WT-rep2","mu_unmod","mu_mod","sigma2_unmod","sigma2_mod","conf_mu_unmod","conf_mu_mod","mod_assignment")
+  
+    d$transcript_start_position <- NA
+    d$transcript_end_position <- NA
+    d$contig <- NA
+    d$strand <- NA
+    d <- transform(d, transcript_start_position=gff[match(id, gff$ID), ]$start)
+    d <- transform(d, transcript_end_position=gff[match(id, gff$ID), ]$end)
+    d <- transform(d, contig=gff[match(id, gff$ID), ]$contig)
+    d <- transform(d, strand=gff[match(id, gff$ID), ]$strand)
+    d <- transform(d, genomic_position=chromosomes[match(contig, chromosomes$contig), ]$genomic_start)
+    
+    d$contig_position <- NA
+    d[d$strand == "+",]$contig_position <- d[d$strand == "+",]$transcript_start_position+d[d$strand == "+",]$position
+    d[d$strand == "-",]$contig_position <- d[d$strand == "-",]$transcript_end_position-d[d$strand == "-",]$position
+    d$pos <- d$contig_position
   }
 
   # add contig position to genomic position and subtract 1. This handles the case where genomic start = 1 and pos = 1 -> 1+1 - 1.
@@ -214,7 +235,7 @@ ks_m6anet_coverage <- ks1_m6anet_coverage
 ks_m6anet_coverage$ks2_num_sites <- ks1_m6anet_coverage$num_sites
 ks_m6anet_coverage$average_num_sites <- rowMeans(ks_m6anet_coverage[,c('num_sites', 'ks2_num_sites')], na.rm=TRUE)
 
-# ---------------------- EPINANO ----------------------
+# ---------------------- EPINANO SVM ----------------------
 # add gene ids to epinano output, only gene ids, not exons etc
 just_genes <- gff[is.na(gff$parent),]  
 find_gene_id <- function(r) {
@@ -255,7 +276,7 @@ c2_epinano_data <- addGenomicPosition(c2_epinano_data, "epinanosvm")
 ks1_epinano_data <- addGenomicPosition(ks1_epinano_data, "epinanosvm")
 ks2_epinano_data <- addGenomicPosition(ks2_epinano_data, "epinanosvm")
 
-c2_epinano_data$gene_id <- apply(c2_epinano_data, 1, find_gene_id)
+c1_epinano_data$gene_id <- apply(c1_epinano_data, 1, find_gene_id)
 c2_epinano_data$gene_id <- apply(c2_epinano_data, 1, find_gene_id)
 ks1_epinano_data$gene_id <- apply(ks1_epinano_data, 1, find_gene_id)
 ks2_epinano_data$gene_id <- apply(ks2_epinano_data, 1, find_gene_id)
@@ -273,6 +294,38 @@ control_epinano_coverage$average_num_sites <- rowMeans(control_epinano_coverage[
 ks_epinano_coverage <- ks1_epinano_coverage
 ks_epinano_coverage$ks2_num_sites <- ks2_epinano_coverage$num_sites
 ks_epinano_coverage$average_num_sites <- rowMeans(ks_epinano_coverage[,c('num_sites', 'ks2_num_sites')], na.rm=TRUE)
+
+# ---------------------- EPINANO DIFF ----------------------
+
+c1_epinano_diff_path_minus <- "/Users/joshualevendis/Desktop/Biomedical\ Research\ Project/epinano/filtered/filtered.KS1_C1_minus_strand.delta-sum_err.prediction.csv"
+c1_epinano_diff_path_plus <- "/Users/joshualevendis/Desktop/Biomedical\ Research\ Project/epinano/filtered/filtered.KS1_C1_plus_strand.delta-sum_err.prediction.csv"
+
+c2_epinano_diff_path_minus <- "/Users/joshualevendis/Desktop/Biomedical\ Research\ Project/epinano/filtered/filtered.KS2_C2_minus_strand.delta-sum_err.prediction.csv"
+c2_epinano_diff_path_plus <- "/Users/joshualevendis/Desktop/Biomedical\ Research\ Project/epinano/filtered/filtered.KS2_C2_plus_strand.delta-sum_err.prediction.csv"
+
+c1_epinano_diff_data_minus <- read.csv(c1_epinano_diff_path_minus, header=FALSE, stringsAsFactors = TRUE)
+c1_epinano_diff_data_plus <- read.csv(c1_epinano_diff_path_plus, header=FALSE, stringsAsFactors = TRUE)
+c1_epinano_diff_data <- rbind(c1_epinano_diff_data_minus, c1_epinano_diff_data_plus)
+
+c2_epinano_diff_data_minus <- read.csv(c2_epinano_diff_path_minus, header=FALSE, stringsAsFactors = TRUE)
+c2_epinano_diff_data_plus <- read.csv(c2_epinano_diff_path_plus, header=FALSE, stringsAsFactors = TRUE)
+c2_epinano_diff_data <- rbind(c2_epinano_diff_data_minus, c2_epinano_diff_data_plus)
+
+c1_epinano_diff_data <- addGenomicPosition(c1_epinano_diff_data, "epinano")
+c2_epinano_diff_data <- addGenomicPosition(c2_epinano_diff_data, "epinano")
+
+c1_epinano_diff_data$gene_id <- apply(c1_epinano_diff_data, 1, find_gene_id)
+c2_epinano_diff_data$gene_id <- apply(c2_epinano_diff_data, 1, find_gene_id)
+
+c1_epinano_diff_coverage <- generateEpinanoCoverage(c1_epinano_diff_data, 1, genome_size)
+c2_epinano_diff_coverage <- generateEpinanoCoverage(c2_epinano_diff_data, 1, genome_size)
+
+# ---------------------- xPore ----------------------
+
+xpore_path <- "/Users/joshualevendis/Desktop/Biomedical\ Research\ Project/majority_direction_kmer_diffmod.table.filtered_pos_diff_mod_rate.DRACHS"
+xpore_data <- read.csv(xpore_path, header=FALSE, stringsAsFactors = TRUE)
+xpore_data <- addGenomicPosition(xpore_data, "xpore")
+xpore_data_coverage <- calculateCoverage(xpore_data, 1, genome_size)
 
 # ---------------------- GRAPH ---------------------- 
 scalar <- function(x) {
@@ -323,51 +376,73 @@ for(i in 1:nrow(chromosomes)) {
   abline(v=chromosomes[i,]$genomic_start_percentage, col="gray", lty=2)
 }
 
-# do it just for chomosome x
-chromosome_x <- 14
-chr1_c2_m6anet_coverage <- generateM6AnetCoverage(c2_m6anet_data, chromosomes[chromosome_x,]$genomic_start, chromosomes[chromosome_x,]$genomic_start + chromosomes[chromosome_x,]$end)
-chr1_ks2_m6anet_coverage <- generateM6AnetCoverage(ks2_m6anet_data, chromosomes[chromosome_x,]$genomic_start, chromosomes[chromosome_x,]$genomic_start + chromosomes[chromosome_x,]$end)
+# --------------- COMPARE MODE PLOTS
+plot(
+  type = "l",
+  c1_epinano_diff_coverage$percent_through_genome,
+  c1_epinano_diff_coverage$num_sites,
+  xlab="% through genome",
+  ylab="Epinano_DiffErr - number predicted sites",
+  col="blue"
+)
+lines(c2_epinano_diff_coverage$percent_through_genome, c2_epinano_diff_coverage$num_sites, col="red")
 
-# get the most modified genes and their numbers
-epinano_highlymodified <- sort(table(c2_epinano_data$gene_id), decreasing = TRUE)
+for(i in 1:nrow(chromosomes)) {
+  abline(v=chromosomes[i,]$genomic_start_percentage, col="gray", lty=2)
+}
 
+plot(
+  type = "l",
+  xpore_data_coverage$percent_through_genome,
+  xpore_data_coverage$num_sites,
+  xlab="% through genome",
+  ylab="xPore - number predicted sites",
+  col="blue"
+)
+
+for(i in 1:nrow(chromosomes)) {
+  abline(v=chromosomes[i,]$genomic_start_percentage, col="gray", lty=2)
+}
+
+# --------------- get the most modified genes and their numbers
+# m6anet
 m6anet_highlymodified <- sort(table(c2_m6anet_data$transcript_id), decreasing = TRUE)
 m6anet_highlymodified <- as.data.frame(m6anet_highlymodified)
 colnames(m6anet_highlymodified) <- c("gene_id", "m6anet_count")
 m6anet_highlymodified$gene_id <- str_split_fixed(m6anet_highlymodified$gene_id, "\\.", 2)[,1]
 
+# epinano svm
+epinano_highlymodified <- sort(table(c2_epinano_data$gene_id), decreasing = TRUE)
 epinano_highlymodified <- as.data.frame(epinano_highlymodified)
 colnames(epinano_highlymodified) <- c("gene_id", "epinano_count")
 
+# epinano diff
+epinano_diff_highlymodified <- sort(table(c1_epinano_diff_data$gene_id), decreasing = TRUE)
+epinano_diff_highlymodified <- as.data.frame(epinano_diff_highlymodified)
+colnames(epinano_diff_highlymodified) <- c("gene_id", "epinano_diff_count")
+
+# xpore
+xpore_highlymodified <- sort(table(xpore_data$id), decreasing = TRUE)
+xpore_highlymodified <- as.data.frame(xpore_highlymodified)
+colnames(xpore_highlymodified) <- c("gene_id", "xpore_count")
+xpore_highlymodified$gene_id <- str_split_fixed(xpore_highlymodified$gene_id, "\\.", 2)[,1]
+
 genes_highlymodified <- merge(m6anet_highlymodified, epinano_highlymodified, by="gene_id")
+genes_highlymodified <- merge(genes_highlymodified, epinano_diff_highlymodified, by="gene_id")
+genes_highlymodified <- merge(genes_highlymodified, xpore_highlymodified, by="gene_id")
 
 genes_highlymodified$average_count_across_tools <- rowMeans(genes_highlymodified[] [,-1])
 
-# Pearsons R coeff between treatments on the same tool, based on genome coverage
-cor(c1_epinano_coverage$num_sites, c2_epinano_coverage$num_sites)
-cor(c2_m6anet_coverage$num_sites, ks2_m6anet_coverage$num_sites)
-cor(c2_epinano_coverage$num_sites, c2_m6anet_coverage$num_sites)
+m6a_genes_modified <- "/Users/joshualevendis/Desktop/Biomedical\ Research\ Project/m6a_genes_modified.csv"
+write.csv(genes_highlymodified, m6a_genes_modified, row.names = FALSE)
+
+# --------------- Pearsons R coeff between treatments on the same tool, based on genome coverage
+plot(c1_epinano_coverage$num_sites, c2_epinano_coverage$num_sites)
+cor(c1_m6anet_coverage$num_sites, c2_m6anet_coverage$num_sites)
+plot(control_epinano_coverage$average_num_sites, control_m6anet_coverage$average_num_sites)
+cor(control_epinano_coverage$average_num_sites, control_m6anet_coverage$average_num_sites)
 
 # Pearsons R coeff between tools on number of sites detected in each gene
 cor(genes_highlymodified$m6anet_count, genes_highlymodified$epinano_count)
 
 cor(rrach_genome_site_coverage$num_sites, drach_genome_site_coverage$num_sites)
-
-m6a_genes_modified <- "/Users/joshualevendis/Desktop/Biomedical\ Research\ Project/m6a_genes_modified.csv"
-write.csv(genes_highlymodified, m6a_genes_modified, row.names = FALSE)
-
-stop()
-
-# STATISTICAL TESTS
-# plotting c1 against c2 num predicted sites should give a linear relationship. We can use a chow
-# test to prove similarity between two series, and confirm dissimilartiy between knock sideways
-#library(strucchange)
-
-#sctest(control_epinano_coverage$num_sites ~ control_epinano_coverage$c2_num_sites, type="Chow")
-#sctest(ks_epinano_coverage$num_sites ~ ks_epinano_coverage$ks2_num_sites, type="Chow")
-
-# forget about the chow test, just plot the two and do a linear regression
-#plot(control_epinano_coverage$num_sites, control_epinano_coverage$c2_num_sites)
-
-# and then to test against RRACH sites maybe normalise the two datasets then plot a linear regression
-#plot(scalar(control_epinano_coverage$num_sites), scalar(rrach_genome_site_coverage$num_sites))

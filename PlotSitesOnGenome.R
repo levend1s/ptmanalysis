@@ -357,7 +357,7 @@ legend(x = "topright",
        legend = c("DRACH", "RRACH"),
        col = c("blue", "red"),
        lwd = 1)
-dev.off()
+suppress <- dev.off()
 
 # m6anet
 jpeg(file = paste(out_dir, "/", "m6anet_coverage.jpg", sep=""), width = plot_width, height = plot_height, res = plot_res)
@@ -378,7 +378,7 @@ legend(x = "topright",
        legend = c("WT", "KS"),
        col = c("blue", "red"),
        lwd = 1)
-dev.off()
+suppress <- dev.off()
 
 # epinano svm
 jpeg(file = paste(out_dir, "/", "epinanosvm_coverage.jpg", sep=""), width = plot_width, height = plot_height, res = plot_res)
@@ -399,7 +399,7 @@ legend(x = "topright",
        legend = c("WT", "KS"),
        col = c("blue", "red"),
        lwd = 1)
-dev.off()
+suppress <- dev.off()
 
 # --------------- COMPARE MODE PLOTS
 
@@ -422,7 +422,7 @@ legend(x = "topright",
        legend = c("Rep 1", "Rep 2"),
        col = c("red", "blue"),
        lwd = 1)
-dev.off()
+suppress <- dev.off()
 
 
 # xpore
@@ -444,7 +444,7 @@ legend(x = "topright",
        legend = c("KS-WT replicate predictions"),
        col = c("blue"),
        lwd = 1)
-dev.off()
+suppress <- dev.off()
 
 # --------------- get the most modified genes and their numbers
 write("determining most modified genes... ", stdout())
@@ -481,15 +481,15 @@ m6a_genes_modified <- "./data/m6a_genes_modified.csv"
 write.csv(genes_highlymodified, m6a_genes_modified, row.names = FALSE)
 
 # --------------- Pearsons R coeff between treatments on the same tool, based on genome coverage
-plot(control_epinano_coverage$average_num_sites, control_m6anet_coverage$average_num_sites)
-cor(control_epinano_coverage$average_num_sites, control_m6anet_coverage$average_num_sites)
+# plot(control_epinano_coverage$average_num_sites, control_m6anet_coverage$average_num_sites)
+# cor(control_epinano_coverage$average_num_sites, control_m6anet_coverage$average_num_sites)
 
-cor(xpore_data_coverage$num_sites, c1_epinano_diff_coverage$num_sites)
-cor(xpore_data_coverage$num_sites, c2_epinano_diff_coverage$num_sites)
+# cor(xpore_data_coverage$num_sites, c1_epinano_diff_coverage$num_sites)
+# cor(xpore_data_coverage$num_sites, c2_epinano_diff_coverage$num_sites)
 
 # Pearsons R coeff between tools on number of sites detected in each gene
-cor(genes_highlymodified$m6anet_count, genes_highlymodified$epinano_count)
-cor(rrach_genome_site_coverage$num_sites, drach_genome_site_coverage$num_sites)
+# cor(genes_highlymodified$m6anet_count, genes_highlymodified$epinano_count)
+# cor(rrach_genome_site_coverage$num_sites, drach_genome_site_coverage$num_sites)
 
 # ---------------- get the gene names of the x most highly modified from average across tools
 gene_ids_most_mod <- genes_highlymodified[
